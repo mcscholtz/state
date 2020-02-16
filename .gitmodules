@@ -1,0 +1,3 @@
+[submodule "enum_utils"]
+	path = enum_utils
+	url = https://github.com/mcscholtz/enum_utils.git
