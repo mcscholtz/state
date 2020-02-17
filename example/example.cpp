@@ -153,7 +153,7 @@ constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF
         constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> table =
         {
             {
-                //When entering this state      Execute this
+                //When exiting this state       Execute this
                 {State::Disabled,               &OnExit},
                 {State::Arming,                 &OnExit},
                 {State::Armed,                  &OnExit},
