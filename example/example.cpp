@@ -1,4 +1,3 @@
-#pragma once
 #include <array>
 #include <tuple>
 #include <thread>
@@ -54,7 +53,7 @@ constexpr std::array<std::pair<Event, const char *>, (size_t)Event::NUMBER_OF_EV
 };
 
 
-class Alarm : public StateMachine<State, Event, 7>
+class Alarm : public StateMachine<State, (size_t)State::NUMBER_OF_STATES, Event, 7>
 {
 
 public:
@@ -62,14 +61,7 @@ public:
     {
         m_currentState = State::Disabled;
         std::cout << "Initial state: " << EnumToString(m_currentState, StateStringMap) << std::endl;
-        StartEventLoop();
-    }
-
-    void ProcessEvent(Event event) override
-    {
-        std::cout << "Got event: " << EnumToString(event, EventStringMap) << std::endl;
-        State next = Next(m_currentState, event, m_stateTable);
-        m_currentState = next;
+        StartEventLoop_();
     }
 
 private:
@@ -106,19 +98,70 @@ private:
         std::cout << "Start arming the alarm\n";
     }
 
-
-    static constexpr std::array<std::tuple<State, Event, void(*)(void*), State>, 7> m_stateTable =
+    //executed right before the state changes to the next state
+    static void OnExit(void * shared)
     {
+        Alarm* alarm = static_cast<Alarm*>(shared);
+        std::cout << "Exit state: " << EnumToString(alarm->m_currentState, StateStringMap) << std::endl;
+    }
+
+    //executed right after the state changes to the current state
+    static void OnEnter(void * shared)
+    {
+        Alarm* alarm = static_cast<Alarm*>(shared);
+        std::cout << "Enter state: " << EnumToString(alarm->m_currentState, StateStringMap) << std::endl;
+    }
+
+    /* This table describes what happens when a specific event happens in a specific state 
+     * The OnEnter and OnExit functions are still executed independantly                        */
+    constexpr std::array<std::tuple<State, Event, void(*)(void*), State>, 7> ON_EVENT_TABLE_() override
+    {
+        constexpr std::array<std::tuple<State, Event, void(*)(void*), State>, 7> table =
         {
-            //In this state         When this event happens       Execute this             Then go to this state
-            {State::Disabled,       Event::EnableAlarm,           &ArmingAlarm,            State::Arming},
-            {State::Arming,         Event::AlarmEnabled,          &AlarmArmed,             State::Armed},
-            {State::Armed,          Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
-            {State::Armed,          Event::DoorOpen,              &StartGracePeriod,       State::GracePeriod},
-            {State::GracePeriod,    Event::GracePeriodTimeout,    &TriggerAlarm,           State::Triggered},
-            {State::GracePeriod,    Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
-            {State::Triggered,      Event::DisableAlarm,          &DisableAlarm,           State::Disabled}
-        }
+            {
+                //In this state         When this event happens       Execute this             Then go to this state
+                {State::Disabled,       Event::EnableAlarm,           &ArmingAlarm,            State::Arming},
+                {State::Arming,         Event::AlarmEnabled,          &AlarmArmed,             State::Armed},
+                {State::Armed,          Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
+                {State::Armed,          Event::DoorOpen,              &StartGracePeriod,       State::GracePeriod},
+                {State::GracePeriod,    Event::GracePeriodTimeout,    &TriggerAlarm,           State::Triggered},
+                {State::GracePeriod,    Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
+                {State::Triggered,      Event::DisableAlarm,          &DisableAlarm,           State::Disabled}
+            }
+        };
+        return table;
+    };
+
+    constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> ON_ENTER_TABLE_() override
+    {
+        constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> table =
+        {
+            {
+                //When entering this state      Execute this
+                {State::Disabled,               &OnEnter},
+                {State::Arming,                 &OnEnter},
+                {State::Armed,                  &OnEnter},
+                {State::GracePeriod,            &OnEnter},
+                {State::Triggered,              &OnEnter}
+            }
+        };
+        return table;
+    };
+
+constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> ON_EXIT_TABLE_() override
+    {
+        constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> table =
+        {
+            {
+                //When entering this state      Execute this
+                {State::Disabled,               &OnExit},
+                {State::Arming,                 &OnExit},
+                {State::Armed,                  &OnExit},
+                {State::GracePeriod,            &OnExit},
+                {State::Triggered,              &OnExit}
+            }
+        };
+        return table;
     };
 }; 
 

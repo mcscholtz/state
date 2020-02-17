@@ -9,7 +9,7 @@
 namespace state
 {
 
-template <typename STATE_T, typename EVENT_T, size_t SIZE>
+template <typename STATE_T, size_t STATE_NUM, typename EVENT_T, size_t EVENT_MAP_SIZE>
 class StateMachine
 {
 public:
@@ -26,11 +26,12 @@ public:
         m_eventLoop.join();
     }
 
-    virtual void ProcessEvent(EVENT_T event) = 0;
-
-    void StartEventLoop()
+    void ProcessEvent(EVENT_T event)
     {
-        m_eventLoop = std::thread(&StateMachine::EventLoop_, this);
+        STATE_T next = OnEvent_(m_currentState, event);
+        OnExit_(m_currentState);
+        m_currentState = next;
+        OnEnter_(m_currentState);
     }
 
     void FutureEvent(int32_t ms, EVENT_T event)
@@ -45,17 +46,32 @@ protected:
     STATE_T             m_currentState;
     std::thread         m_eventLoop;
 
-    /* Given the current state and the occured event, check if there exists a transition in the state table */
-    constexpr STATE_T Next(STATE_T current, EVENT_T event, 
-        const std::array<std::tuple<STATE_T, EVENT_T, void(*)(void*),STATE_T>, SIZE> stateTransitionTable)
+    void StartEventLoop_()
+    {
+        m_eventLoop = std::thread(&StateMachine::EventLoop_, this);
+    }
+
+    virtual constexpr std::array<std::tuple<STATE_T, EVENT_T, void(*)(void*),STATE_T>,EVENT_MAP_SIZE> ON_EVENT_TABLE_() = 0;
+
+    virtual constexpr std::array<std::tuple<STATE_T, void(*)(void*)>, STATE_NUM> ON_ENTER_TABLE_() = 0;
+
+    virtual constexpr std::array<std::tuple<STATE_T, void(*)(void*)>, STATE_NUM> ON_EXIT_TABLE_() = 0;
+
+private:
+
+    /* Given the current state and the occured event, 
+       check if there exists a transition in the state table,
+       if there is one execute the callback and return the next state */
+    constexpr STATE_T OnEvent_(STATE_T current, EVENT_T event)
     {
         STATE_T next = current;
-        for (auto state : stateTransitionTable)
+        auto onEventTable = ON_EVENT_TABLE_();
+        for (auto state : onEventTable)
         {
-            if (std::get<0>(state) == current &&
-                std::get<1>(state) == event)
+            //check if there is an entry in the transition map
+            if (std::get<0>(state) == current && std::get<1>(state) == event)
             {
-                //execute transition function
+                //execute transition function if there is one
                 auto callback = std::get<2>(state);
                 
                 if (callback)
@@ -69,7 +85,51 @@ protected:
         }
         return next;
     }
-    
+
+    //Execute the on exit callback, if there is one
+    constexpr void OnExit_(STATE_T current)
+    {
+        //execute the onexit callback
+        auto onExitTable = ON_EXIT_TABLE_();
+        for (auto state : onExitTable)
+        {
+            if (std::get<0>(state) == current)
+            {
+                //execute OnExit() function if there is one defined
+                auto onExit = std::get<1>(state);
+                
+                if (onExit)
+                {
+                    onExit(this);
+                }
+                break;
+            }
+        }
+        return;
+    }
+
+    //Execute the on enter callback
+    constexpr void OnEnter_(STATE_T current)
+    {
+        //execute the onexit callback
+        auto onEnterTable = ON_ENTER_TABLE_();
+        for (auto state : onEnterTable)
+        {
+            if (std::get<0>(state) == current)
+            {
+                //execute OnEnter() function if there is one defined
+                auto onEnter = std::get<1>(state);
+                
+                if (onEnter)
+                {
+                    onEnter(this);
+                }
+                break;
+            }
+        }
+        return;
+    }
+ 
     void EventLoop_()
     {
         while(m_runEventLoop.load())
