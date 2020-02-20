@@ -22,11 +22,11 @@ enum class State
 constexpr std::array<std::pair<State, const char *>, (size_t)State::NUMBER_OF_STATES> StateStringMap =
 {
     {
-            {State::Disabled,       "Disabled"},
-            {State::Armed,          "Armed"},
-            {State::Triggered,      "Triggered"},
-            {State::Arming,         "Arming"},
-            {State::GracePeriod,    "GracePeriod"},
+        {State::Disabled,       "Disabled"},
+        {State::Armed,          "Armed"},
+        {State::Triggered,      "Triggered"},
+        {State::Arming,         "Arming"},
+        {State::GracePeriod,    "GracePeriod"},
     }
 };
 
@@ -44,11 +44,11 @@ enum class Event
 constexpr std::array<std::pair<Event, const char *>, (size_t)Event::NUMBER_OF_EVENTS> EventStringMap =
 {
     {
-            {Event::EnableAlarm,           "EnableAlarm"},
-            {Event::DisableAlarm,          "DisableAlarm"},
-            {Event::AlarmEnabled,          "AlarmEnabled"},
-            {Event::DoorOpen,              "DoorOpen"},
-            {Event::GracePeriodTimeout,    "GracePeriodTimeout"},
+        {Event::EnableAlarm,           "EnableAlarm"},
+        {Event::DisableAlarm,          "DisableAlarm"},
+        {Event::AlarmEnabled,          "AlarmEnabled"},
+        {Event::DoorOpen,              "DoorOpen"},
+        {Event::GracePeriodTimeout,    "GracePeriodTimeout"},
     }
 };
 
@@ -64,11 +64,24 @@ public:
         StartEventLoop_();
     }
 
+    virtual void ProcessEvent(Event event) override
+    {
+        //process the incoming event
+        State next = OnEvent_(m_currentState, event, ON_EVENT_TABLE);
+        if (m_currentState == next)
+        {
+            return;
+        }
+        //if the state changed execute the transition functions
+        OnTransition_(m_currentState, ON_EXIT_TABLE);
+        m_currentState = next;
+        OnTransition_(m_currentState, ON_ENTER_TABLE);
+    }
+
 private:
     static void StartGracePeriod(void * shared)
     {
         Alarm* alarm = static_cast<Alarm*>(shared);
-        //do nothing for now
         alarm->FutureEvent(10000, Event::GracePeriodTimeout);
         std::cout << "Starting Grace Period\n";
     }
@@ -114,57 +127,44 @@ private:
 
     /* This table describes what happens when a specific event happens in a specific state 
      * The OnEnter and OnExit functions are still executed independantly                        */
-    constexpr std::array<std::tuple<State, Event, void(*)(void*), State>, 7> ON_EVENT_TABLE_() override
+    static constexpr std::array<std::tuple<State, Event, void(*)(void*), State>, 7> ON_EVENT_TABLE =
     {
-        constexpr std::array<std::tuple<State, Event, void(*)(void*), State>, 7> table =
         {
-            {
-                //In this state         When this event happens       Execute this             Then go to this state
-                {State::Disabled,       Event::EnableAlarm,           &ArmingAlarm,            State::Arming},
-                {State::Arming,         Event::AlarmEnabled,          &AlarmArmed,             State::Armed},
-                {State::Armed,          Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
-                {State::Armed,          Event::DoorOpen,              &StartGracePeriod,       State::GracePeriod},
-                {State::GracePeriod,    Event::GracePeriodTimeout,    &TriggerAlarm,           State::Triggered},
-                {State::GracePeriod,    Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
-                {State::Triggered,      Event::DisableAlarm,          &DisableAlarm,           State::Disabled}
-            }
-        };
-        return table;
+            //In this state         When this event happens       Execute this             Then go to this state
+            {State::Disabled,       Event::EnableAlarm,           &ArmingAlarm,            State::Arming},
+            {State::Arming,         Event::AlarmEnabled,          &AlarmArmed,             State::Armed},
+            {State::Armed,          Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
+            {State::Armed,          Event::DoorOpen,              &StartGracePeriod,       State::GracePeriod},
+            {State::GracePeriod,    Event::GracePeriodTimeout,    &TriggerAlarm,           State::Triggered},
+            {State::GracePeriod,    Event::DisableAlarm,          &DisableAlarm,           State::Disabled},
+            {State::Triggered,      Event::DisableAlarm,          &DisableAlarm,           State::Disabled}
+        }
     };
 
-    constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> ON_ENTER_TABLE_() override
+    static constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> ON_ENTER_TABLE =
     {
-        constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> table =
         {
-            {
-                //When entering this state      Execute this
-                {State::Disabled,               &OnEnter},
-                {State::Arming,                 &OnEnter},
-                {State::Armed,                  &OnEnter},
-                {State::GracePeriod,            &OnEnter},
-                {State::Triggered,              &OnEnter}
-            }
-        };
-        return table;
+            //When entering this state      Execute this
+            {State::Disabled,               &OnEnter},
+            {State::Arming,                 &OnEnter},
+            {State::Armed,                  &OnEnter},
+            {State::GracePeriod,            &OnEnter},
+            {State::Triggered,              &OnEnter}
+        }
     };
 
-constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> ON_EXIT_TABLE_() override
+    static constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> ON_EXIT_TABLE =
     {
-        constexpr std::array<std::tuple<State, void(*)(void*)>, (size_t)State::NUMBER_OF_STATES> table =
         {
-            {
-                //When exiting this state       Execute this
-                {State::Disabled,               &OnExit},
-                {State::Arming,                 &OnExit},
-                {State::Armed,                  &OnExit},
-                {State::GracePeriod,            &OnExit},
-                {State::Triggered,              &OnExit}
-            }
-        };
-        return table;
+            //When exiting this state       Execute this
+            {State::Disabled,               &OnExit},
+            {State::Arming,                 &OnExit},
+            {State::Armed,                  &OnExit},
+            {State::GracePeriod,            &OnExit},
+            {State::Triggered,              &OnExit}
+        }
     };
 }; 
-
 
 int main()
 {

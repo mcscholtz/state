@@ -26,13 +26,7 @@ public:
         m_eventLoop.join();
     }
 
-    void ProcessEvent(EVENT_T event)
-    {
-        STATE_T next = OnEvent_(m_currentState, event);
-        OnExit_(m_currentState);
-        m_currentState = next;
-        OnEnter_(m_currentState);
-    }
+    virtual void ProcessEvent(EVENT_T event) = 0;
 
     void FutureEvent(int32_t ms, EVENT_T event)
     {
@@ -51,21 +45,13 @@ protected:
         m_eventLoop = std::thread(&StateMachine::EventLoop_, this);
     }
 
-    virtual constexpr std::array<std::tuple<STATE_T, EVENT_T, void(*)(void*),STATE_T>,EVENT_MAP_SIZE> ON_EVENT_TABLE_() = 0;
-
-    virtual constexpr std::array<std::tuple<STATE_T, void(*)(void*)>, STATE_NUM> ON_ENTER_TABLE_() = 0;
-
-    virtual constexpr std::array<std::tuple<STATE_T, void(*)(void*)>, STATE_NUM> ON_EXIT_TABLE_() = 0;
-
-private:
-
     /* Given the current state and the occured event, 
        check if there exists a transition in the state table,
        if there is one execute the callback and return the next state */
-    constexpr STATE_T OnEvent_(STATE_T current, EVENT_T event)
+    constexpr STATE_T OnEvent_(STATE_T current, EVENT_T event, 
+        const std::array<std::tuple<STATE_T, EVENT_T, void(*)(void*),STATE_T>,EVENT_MAP_SIZE>& onEventTable)
     {
         STATE_T next = current;
-        auto onEventTable = ON_EVENT_TABLE_();
         for (auto state : onEventTable)
         {
             //check if there is an entry in the transition map
@@ -86,21 +72,16 @@ private:
         return next;
     }
 
-    //Execute the on exit callback, if there is one
-    constexpr void OnExit_(STATE_T current)
+    constexpr void OnTransition_(STATE_T current, const std::array<std::tuple<STATE_T, void(*)(void*)>, STATE_NUM>& transitionTable)
     {
-        //execute the onexit callback
-        auto onExitTable = ON_EXIT_TABLE_();
-        for (auto state : onExitTable)
+        for (auto transition : transitionTable)
         {
-            if (std::get<0>(state) == current)
+            if (std::get<0>(transition) == current)
             {
-                //execute OnExit() function if there is one defined
-                auto onExit = std::get<1>(state);
-                
-                if (onExit)
+                auto callback = std::get<1>(transition);
+                if (callback)
                 {
-                    onExit(this);
+                    callback(this);
                 }
                 break;
             }
@@ -108,28 +89,8 @@ private:
         return;
     }
 
-    //Execute the on enter callback
-    constexpr void OnEnter_(STATE_T current)
-    {
-        //execute the onexit callback
-        auto onEnterTable = ON_ENTER_TABLE_();
-        for (auto state : onEnterTable)
-        {
-            if (std::get<0>(state) == current)
-            {
-                //execute OnEnter() function if there is one defined
-                auto onEnter = std::get<1>(state);
-                
-                if (onEnter)
-                {
-                    onEnter(this);
-                }
-                break;
-            }
-        }
-        return;
-    }
- 
+private:
+
     void EventLoop_()
     {
         while(m_runEventLoop.load())
